@@ -67,13 +67,17 @@ export function createPendingStates({ ttl = PENDING_TTL, now = () => Date.now() 
      * @returns {Array} New states, with the commanded values where they still win.
      */
     apply(states) {
+      // Only the numeric states can carry a commanded value: a text state
+      // (the unit's error) passes through as it is.
+      const numeric = states.filter((state) => 'state' in state);
       const values = overlay(
-        new Map(states.map((state) => [state.device_feature_external_id, state.state])),
+        new Map(numeric.map((state) => [state.device_feature_external_id, state.state])),
       );
-      return states.map((state) => ({
-        ...state,
-        state: values.get(state.device_feature_external_id),
-      }));
+      return states.map((state) =>
+        'state' in state
+          ? { ...state, state: values.get(state.device_feature_external_id) }
+          : state,
+      );
     },
   };
 }

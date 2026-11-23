@@ -30,7 +30,16 @@ export const FEATURE = {
   SWING_VERTICAL: 'swing-vertical',
   SWING_HORIZONTAL: 'swing-horizontal',
   FAN_SPEED: 'fan-speed',
+  WIFI_SIGNAL: 'wifi-signal',
+  ERROR: 'error',
 };
+
+// The Wi-Fi signal is in dBm. Gladys draws a signal feature as 0 to 5 bars
+// spread between min and max: -90 dBm (unusable) to -30 dBm (next to the box).
+export const WIFI_SIGNAL_MIN = -90;
+export const WIFI_SIGNAL_MAX = -30;
+// The text of the error feature when the unit reports none.
+export const NO_ERROR_TEXT = 'OK';
 
 // Gladys AC_MODE values (mirrors the Gladys core constants; the SDK does not
 // export them).
@@ -509,7 +518,53 @@ export function buildDevice(gladys, unit) {
     });
   }
 
+  // Health of the unit's link: read on their own schedule, not from the
+  // settings (see src/wifiSignal.js), and the error the unit reports.
+  device.features.push(
+    {
+      name: 'Wi-Fi signal',
+      external_id: ids.feature(FEATURE.WIFI_SIGNAL),
+      category: DEVICE_FEATURE_CATEGORIES.SIGNAL,
+      type: DEVICE_FEATURE_TYPES.SIGNAL.QUALITY,
+      min: WIFI_SIGNAL_MIN,
+      max: WIFI_SIGNAL_MAX,
+      read_only: true,
+      has_feedback: false,
+      keep_history: true,
+    },
+    {
+      name: 'Error',
+      external_id: ids.feature(FEATURE.ERROR),
+      category: DEVICE_FEATURE_CATEGORIES.TEXT,
+      type: DEVICE_FEATURE_TYPES.TEXT.TEXT,
+      min: 0,
+      max: 0,
+      read_only: true,
+      has_feedback: false,
+      keep_history: false,
+    },
+  );
+
   return device;
+}
+
+/**
+ * Describe the error the unit reports: its code, "Error" when it reports
+ * none, or NO_ERROR_TEXT when it is not in error. `IsInError` is a "True" /
+ * "False" string like the other settings.
+ * @param {object} unit - Air-to-air unit.
+ * @returns {string|null} The text, or null when the unit does not say.
+ */
+export function readErrorText(unit) {
+  const inError = getSetting(unit, 'IsInError');
+  if (inError === undefined || inError === null) {
+    return null;
+  }
+  if (String(inError).toLowerCase() !== 'true') {
+    return NO_ERROR_TEXT;
+  }
+  const code = getSetting(unit, 'ErrorCode');
+  return code ? String(code).slice(0, 40) : 'Error';
 }
 
 /**
@@ -571,6 +626,11 @@ export function readStates(gladys, unit) {
       device_feature_external_id: ids.feature(FEATURE.SWING_HORIZONTAL),
       state: swingHorizontal,
     });
+  }
+
+  const errorText = readErrorText(unit);
+  if (errorText !== null) {
+    states.push({ device_feature_external_id: ids.feature(FEATURE.ERROR), text: errorText });
   }
 
   return states;

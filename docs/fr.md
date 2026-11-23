@@ -32,14 +32,19 @@ donc déjà dans l'écran Découverte — lancez un scan pour rafraîchir la lis
   **Vitesse de ventilation** (auto, ou seulement les vitesses que l'unité
   possède réellement). Les unités
   équipées de volets ajoutent **Balayage vertical** et **Balayage horizontal**
-  (auto, balayage ou une position fixe).
+  (auto, balayage ou une position fixe). Deux informations en lecture seule
+  aident à diagnostiquer la liaison : le **Signal Wi-Fi** de l'adaptateur (en
+  dBm, de -90 à -30 ; lu toutes les 30 minutes et daté de sa mesure) et
+  l'**Erreur** que l'unité signale (« OK », ou son code d'erreur).
 - Les **unités air-eau (pompes à chaleur Ecodan)** exposent **Marche/Arrêt**,
   une consigne **Température zone 1** et la **Température ambiante zone 1** en
   lecture seule, un capteur **Température extérieure**, et — si un ballon d'eau
   chaude est présent — **Température eau chaude** (consigne), une **Température
   du ballon** en lecture seule et un interrupteur **Eau chaude forcée**.
 
-Créez celles que vous souhaitez piloter.
+Créez celles que vous souhaitez piloter. Pour un appareil déjà créé avant la
+version 1.7.0, cliquez sur **Mettre à jour** dans l'écran Découverte pour lui
+ajouter le signal Wi-Fi et l'erreur.
 
 ## Widget PAC MELCloud
 

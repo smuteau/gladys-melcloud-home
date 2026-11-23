@@ -20,6 +20,9 @@ Air-to-air units (air conditioners) are exposed with:
 - **Fan speed** — auto, or the speeds the unit reports (`numberOfFanSpeeds`)
 - **Vertical swing** and **Horizontal swing** — vane position, on the units that
   have vanes
+- **Wi-Fi signal** — read-only, in dBm, from the telemetry series
+  (`measure=rssi`) every 30 minutes, stamped with the time of the reading
+- **Error** — read-only text: `OK`, or the unit's `ErrorCode` when `IsInError`
 
 A **MELCloud heat pump** dashboard widget ("PAC MELCloud" in French) drives one
 air-to-air unit: room and target temperatures with their 24 h curve, its state,

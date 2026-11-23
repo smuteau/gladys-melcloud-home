@@ -5,6 +5,7 @@
 //   - GET  /context               -> buildings + air-to-air / air-to-water units
 //   - PUT  /monitor/ataunit/{id}   -> command an air-to-air unit
 //   - PUT  /monitor/atwunit/{id}   -> command an air-to-water unit
+//   - GET  /telemetry/telemetry/actual/{id}?measure=rssi -> Wi-Fi signal
 //   - GET  <ws hash endpoint>      -> credential for the real-time WebSocket
 // -----------------------------------------------------------------------------
 
@@ -25,6 +26,32 @@ export const API_ENDPOINT = 'https://mobile.bff.melcloudhome.com';
 // This request carries the account access token, so re-verify before changing.
 export const WS_HASH_ENDPOINT =
   'https://6x2dgdulg7omjsxalnhmo4ynba0dcgwk.lambda-url.eu-west-1.on.aws/';
+
+// How far back getWifiSignal looks for the newest reading.
+export const WIFI_SIGNAL_WINDOW_HOURS = 6;
+
+/**
+ * Format a date the way the telemetry endpoint expects: UTC, to the minute.
+ * @param {Date} date - The date.
+ * @returns {string} e.g. "2026-11-23 10:15".
+ */
+function toTelemetryTime(date) {
+  return date.toISOString().slice(0, 16).replace('T', ' ');
+}
+
+/**
+ * Parse a telemetry timestamp: UTC, with or without an offset.
+ * @param {*} value - The stamp from the response.
+ * @returns {Date|null} The date, or null when it does not parse.
+ */
+function parseTelemetryTime(value) {
+  if (typeof value !== 'string' || value === '') {
+    return null;
+  }
+  const hasZone = /(Z|[+-]\d\d:?\d\d)$/i.test(value);
+  const date = new Date(hasZone ? value : `${value.replace(' ', 'T')}Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
 const TOKEN_REFRESH_BUFFER_SECONDS = 60;
 const DEFAULT_EXPIRES_IN_SECONDS = 3600;
@@ -126,6 +153,44 @@ export class MELCloudHomeApi {
       throw new Error('MELCloud Home: no WebSocket hash returned');
     }
     return hash;
+  }
+
+  /**
+   * Fetch the latest Wi-Fi signal the unit's adapter uploaded, from the
+   * telemetry series the MELCloud Home app charts. The top-level `rssi` of
+   * `/context` stopped updating in September 2026, hence this call. Some
+   * adapters upload every few minutes, others only on a change: the window
+   * reaches back `hours` so a steady signal is still found.
+   * @param {string} unitId - The unit id.
+   * @param {object} [options] - Options.
+   * @param {number} [options.hours] - How far back to look.
+   * @returns {Promise<{value: number, time: Date}|null>} The newest reading, or null.
+   */
+  async getWifiSignal(unitId, { hours = WIFI_SIGNAL_WINDOW_HOURS } = {}) {
+    const accessToken = await this.getAccessToken();
+    const to = new Date(this.now());
+    const from = new Date(to.getTime() - hours * 3600 * 1000);
+    const { data } = await this.client.get(
+      `${API_ENDPOINT}/telemetry/telemetry/actual/${encodeURIComponent(unitId)}`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        params: { from: toTelemetryTime(from), to: toTelemetryTime(to), measure: 'rssi' },
+      },
+    );
+    let latest = null;
+    ((data && data.measureData) || []).forEach((measure) => {
+      ((measure && measure.values) || []).forEach((point) => {
+        const time = parseTelemetryTime(point && point.time);
+        const value = Math.round(Number(point && point.value));
+        if (!time || point.value === null || point.value === '' || !Number.isFinite(value)) {
+          return;
+        }
+        if (!latest || time > latest.time) {
+          latest = { value, time };
+        }
+      });
+    });
+    return latest;
   }
 
   /**

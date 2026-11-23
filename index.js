@@ -24,6 +24,7 @@ import { createRealtimeClient } from './src/realtime.js';
 import { COMMAND_INIT_WAIT, createInitGate } from './src/initGate.js';
 import { createPendingStates } from './src/pendingStates.js';
 import { createWidgetRefresher } from './src/widgetRefresh.js';
+import { WIFI_SIGNAL_INTERVAL, createWifiSignalReader } from './src/wifiSignal.js';
 import {
   REMOTE_WIDGET_KEY,
   buildRemoteContent,
@@ -295,6 +296,82 @@ gladys.onWidgetAction(REMOTE_WIDGET_KEY, async (actionKey, params, { settings, v
   return message;
 });
 
+// --- Wi-Fi signal ------------------------------------------------------------
+const wifiSignal = createWifiSignalReader({
+  getWifiSignal: (unitId) => api.getWifiSignal(unitId),
+});
+let wifiSignalTimer = null;
+let wifiSignalInFlight = null;
+
+/**
+ * Read and publish the Wi-Fi signal of every created device that has the
+ * feature (devices created before 1.7.0 get it from Discovery, "Update").
+ * One telemetry request per unit, one unit after the other.
+ * @returns {Promise<void>} Nothing.
+ */
+async function doRefreshWifiSignals() {
+  if (!api) {
+    return;
+  }
+  const devices =
+    gladys.devices && gladys.devices.length ? gladys.devices : await gladys.getDevices();
+  for (const device of devices) {
+    const feature = (device.features || []).find((f) =>
+      String(f.external_id).endsWith(':wifi-signal'),
+    );
+    const match = feature ? await registry.findUnit(api, device.external_id) : null;
+    if (!match || !api) {
+      continue;
+    }
+    const state = await wifiSignal.read(match.unit.id, feature.external_id);
+    if (state) {
+      try {
+        await gladys.publishStates([state]);
+      } catch (e) {
+        // Published again on the next round.
+        wifiSignal.forget();
+        logger.warn('Failed to publish a Wi-Fi signal to Gladys:', e.message);
+      }
+    }
+  }
+}
+
+/**
+ * Refresh the Wi-Fi signals, joining a refresh already in flight.
+ * @returns {Promise<void>} Nothing.
+ */
+function refreshWifiSignals() {
+  if (!wifiSignalInFlight) {
+    wifiSignalInFlight = doRefreshWifiSignals()
+      .catch((e) => logger.warn('MELCloud Home Wi-Fi signal refresh failed:', e.message))
+      .finally(() => {
+        wifiSignalInFlight = null;
+      });
+  }
+  return wifiSignalInFlight;
+}
+
+/**
+ * Read the signals now, then every WIFI_SIGNAL_INTERVAL.
+ * @returns {void} Nothing.
+ */
+function startWifiSignals() {
+  refreshWifiSignals();
+  if (!wifiSignalTimer) {
+    wifiSignalTimer = setInterval(refreshWifiSignals, WIFI_SIGNAL_INTERVAL);
+    wifiSignalTimer.unref();
+  }
+}
+
+// A device created or updated from Discovery may have just gained the feature:
+// read its signal at once rather than at the next round.
+const onDeviceSaved = () => {
+  wifiSignal.forget();
+  refreshWifiSignals();
+};
+gladys.onDeviceCreated(onDeviceSaved);
+gladys.onDeviceUpdated(onDeviceSaved);
+
 // --- Polling -----------------------------------------------------------------
 gladys.onPoll(async (device) => {
   if (!api) {
@@ -322,6 +399,8 @@ gladys.onConfigUpdated(async (newConfig) => {
   await publishDevices();
   // The hash is tied to the account.
   realtime.restart();
+  wifiSignal.forget();
+  refreshWifiSignals();
 });
 
 // --- Connection lifecycle ----------------------------------------------------
@@ -335,6 +414,7 @@ gladys.on('connected', async () => {
     await initApi();
     await publishDevices();
     realtime.start();
+    startWifiSignals();
   } catch (e) {
     logger.error('MELCloud Home initialization failed:', e.message);
   }
@@ -346,6 +426,7 @@ gladys.on('connected', async () => {
 gladys.handleShutdown((signal) => {
   logger.info(`Received ${signal} -> graceful shutdown`);
   realtime.stop();
+  clearInterval(wifiSignalTimer);
 });
 
 // --- Startup -----------------------------------------------------------------

@@ -15,6 +15,10 @@ import {
   AC_SWING_VERTICAL,
   AC_SWING_HORIZONTAL,
   AC_FAN_SPEED,
+  NO_ERROR_TEXT,
+  WIFI_SIGNAL_MAX,
+  WIFI_SIGNAL_MIN,
+  readErrorText,
 } from '../src/devices/airToAir.js';
 
 const gladys = createFakeGladys();
@@ -51,7 +55,7 @@ test('getSetting reads a value or undefined', () => {
   assert.equal(getSetting({}, 'Power'), undefined);
 });
 
-test('buildDevice maps a fully equipped unit to all seven features', () => {
+test('buildDevice maps a fully equipped unit to all nine features', () => {
   const device = buildDevice(gladys, buildUnit());
   assert.equal(device.name, 'Salon');
   assert.equal(device.external_id, 'ext:test:ata:unit-1');
@@ -61,8 +65,8 @@ test('buildDevice maps a fully equipped unit to all seven features', () => {
   // flagged `should_poll`.
   assert.equal(device.should_poll, true);
   // The fixture has a fan and both vanes: power, mode, target and room
-  // temperature, fan speed, and the two swings.
-  assert.equal(device.features.length, 7);
+  // temperature, fan speed, the two swings, the Wi-Fi signal and the error.
+  assert.equal(device.features.length, 9);
   const temp = device.features.find((f) => f.external_id.endsWith(':temperature'));
   assert.equal(temp.min, 8);
   assert.equal(temp.max, 31);
@@ -486,4 +490,68 @@ test('buildSetPayload sends the speed alone and rejects an unknown speed', () =>
   assert.equal(payload.operationMode, null);
   assert.equal(payload.setTemperature, null);
   assert.equal(buildSetPayload(gladys, unit, 'ext:test:ata:unit-1:fan-speed', 99), null);
+});
+
+test('buildDevice adds a read-only Wi-Fi signal in dBm and a text error feature', () => {
+  const device = buildDevice(gladys, buildUnit());
+  const signal = device.features.find((f) => f.external_id === 'ext:test:ata:unit-1:wifi-signal');
+  assert.deepEqual(
+    {
+      category: signal.category,
+      type: signal.type,
+      min: signal.min,
+      max: signal.max,
+      read_only: signal.read_only,
+      keep_history: signal.keep_history,
+    },
+    {
+      category: 'signal',
+      type: 'integer',
+      min: WIFI_SIGNAL_MIN,
+      max: WIFI_SIGNAL_MAX,
+      read_only: true,
+      keep_history: true,
+    },
+  );
+  const error = device.features.find((f) => f.external_id === 'ext:test:ata:unit-1:error');
+  assert.equal(error.category, 'text');
+  assert.equal(error.type, 'text');
+  assert.equal(error.read_only, true);
+  assert.equal(buildSetPayload(gladys, buildUnit(), signal.external_id, -50), null);
+  assert.equal(buildSetPayload(gladys, buildUnit(), error.external_id, 1), null);
+});
+
+test('readErrorText reads IsInError and ErrorCode', () => {
+  const withSettings = (settings) => buildUnit({ settings });
+  assert.equal(readErrorText(buildUnit()), null, 'not reported');
+  assert.equal(readErrorText(withSettings([{ name: 'IsInError', value: 'False' }])), NO_ERROR_TEXT);
+  assert.equal(readErrorText(withSettings([{ name: 'IsInError', value: false }])), NO_ERROR_TEXT);
+  assert.equal(
+    readErrorText(
+      withSettings([
+        { name: 'IsInError', value: 'True' },
+        { name: 'ErrorCode', value: 'E6' },
+      ]),
+    ),
+    'E6',
+  );
+  assert.equal(
+    readErrorText(
+      withSettings([
+        { name: 'IsInError', value: 'true' },
+        { name: 'ErrorCode', value: '' },
+      ]),
+    ),
+    'Error',
+  );
+});
+
+test('readStates publishes the error as a text state', () => {
+  const unit = buildUnit();
+  unit.settings.push({ name: 'IsInError', value: 'False' }, { name: 'ErrorCode', value: '' });
+  const states = readStates(gladys, unit);
+  assert.deepEqual(states.at(-1), {
+    device_feature_external_id: 'ext:test:ata:unit-1:error',
+    text: NO_ERROR_TEXT,
+  });
 });

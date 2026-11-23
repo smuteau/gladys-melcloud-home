@@ -148,3 +148,76 @@ test('getWebSocketHash throws when no hash comes back', async () => {
     await assert.rejects(() => api.getWebSocketHash(), /no WebSocket hash/);
   }
 });
+
+const signalApi = (data, calls = []) =>
+  new MELCloudHomeApi({
+    now: () => Date.UTC(2026, 10, 23, 10, 15, 30),
+    httpClient: {
+      get: async (url, options) => {
+        calls.push({ url, options });
+        return { data };
+      },
+    },
+  });
+
+test('getWifiSignal asks the telemetry for the rssi of the last hours, in UTC', async () => {
+  const calls = [];
+  const api = signalApi({}, calls);
+  api.accessToken = 'tok';
+  api.tokenExpiresAt = Infinity;
+  assert.equal(await api.getWifiSignal('u 1'), null);
+  assert.equal(calls[0].url, `${API_ENDPOINT}/telemetry/telemetry/actual/u%201`);
+  assert.deepEqual(calls[0].options.params, {
+    from: '2026-11-23 04:15',
+    to: '2026-11-23 10:15',
+    measure: 'rssi',
+  });
+  assert.equal(calls[0].options.headers.Authorization, 'Bearer tok');
+});
+
+test('getWifiSignal returns the newest reading, whatever the order', async () => {
+  const api = signalApi({
+    measureData: [
+      {
+        values: [
+          { time: '2026-11-23 09:00:00', value: '-70' },
+          { time: '2026-11-23 10:05:00', value: '-63.6' },
+          { time: '2026-11-23 08:00:00', value: '-50' },
+        ],
+      },
+      {
+        values: [
+          { time: 'garbage', value: '-40' },
+          { time: '2026-11-23T10:10:00Z', value: '' },
+        ],
+      },
+      null,
+      {},
+    ],
+  });
+  api.accessToken = 'tok';
+  api.tokenExpiresAt = Infinity;
+  assert.deepEqual(await api.getWifiSignal('u1'), {
+    value: -64,
+    time: new Date('2026-11-23T10:05:00Z'),
+  });
+});
+
+test('getWifiSignal reads a stamp with an offset as that instant', async () => {
+  const api = signalApi({
+    measureData: [
+      {
+        values: [
+          { time: '2026-11-23T11:00:00+01:00', value: -55 },
+          { time: '2026-11-23T10:30:00Z', value: -60 },
+        ],
+      },
+    ],
+  });
+  api.accessToken = 'tok';
+  api.tokenExpiresAt = Infinity;
+  assert.deepEqual(await api.getWifiSignal('u1'), {
+    value: -60,
+    time: new Date('2026-11-23T10:30:00Z'),
+  });
+});

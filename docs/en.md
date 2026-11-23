@@ -31,14 +31,19 @@ already listed in the Discovery screen — run a scan to refresh the list.
   cool / dry / fan / auto), **Target temperature** and a read-only **Room
   temperature**, plus a **Fan speed** (auto, or only the speeds the unit
   actually has). Units fitted with vanes also get **Vertical swing** and
-  **Horizontal swing** (auto, swing or a fixed position).
+  **Horizontal swing** (auto, swing or a fixed position). Two read-only
+  values help diagnose the link: the adapter's **Wi-Fi signal** (in dBm, -90
+  to -30; read every 30 minutes and stamped with the time it was measured)
+  and the **Error** the unit reports ("OK", or its error code).
 - **Air-to-water units (Ecodan heat pumps)** expose **Power**, a **Zone 1
   temperature** setpoint and read-only **Zone 1 room temperature**, an
   **Outdoor temperature** sensor, and — when a hot water tank is present —
   **Hot water temperature** (setpoint), a read-only **Hot water tank
   temperature** and a **Forced hot water** switch.
 
-Create the ones you want to control.
+Create the ones you want to control. For a device created before version
+1.7.0, click **Update** in the Discovery screen to add the Wi-Fi signal and the
+error to it.
 
 ## MELCloud heat pump widget
 

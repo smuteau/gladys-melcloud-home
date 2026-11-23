@@ -61,3 +61,18 @@ test('apply returns the published states with the commanded values', () => {
   // The read itself is left as it was.
   assert.equal(read[0].state, 1);
 });
+
+test('apply passes a text state through untouched', () => {
+  const pending = createPendingStates({ now: () => 0 });
+  pending.set('temp', 22, 21);
+  assert.deepEqual(
+    pending.apply([
+      { device_feature_external_id: 'temp', state: 21 },
+      { device_feature_external_id: 'error', text: 'OK' },
+    ]),
+    [
+      { device_feature_external_id: 'temp', state: 22 },
+      { device_feature_external_id: 'error', text: 'OK' },
+    ],
+  );
+});
